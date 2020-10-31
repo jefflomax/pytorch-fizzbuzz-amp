@@ -11,9 +11,11 @@ In another window, run  tensorboard --logdir=runs
 
 Run nvidia-smi for GPU info
 '''
+import gc
 import sys
 import random
 import numpy as np
+import time
 import torch
 import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
@@ -30,6 +32,7 @@ NUM_HIDDEN = 100
 BATCH_SIZE = 512
 OUTPUT_EPOCH_GAP = 100
 LEARNING_RATE = 0.05
+EPOCHS = 10000
 
 
 class FizzBuzz():
@@ -101,6 +104,17 @@ def print_model_params(model):
         #github.com/pytorch/pytorch/pull/30531
         print( f'Param Name: {name} Value: {param.data} Gradient: {param.grad}')
 
+def start_timer():
+    gc.collect()
+    torch.cuda.empty_cache()
+    torch.cuda.reset_max_memory_allocated()
+    torch.cuda.synchronize()
+    return time.time()
+
+def end_timer(start_time):
+    torch.cuda.synchronize()
+    return ((time.time()-start_time), torch.cuda.max_memory_allocated())
+
 def main():
     if not torch.cuda.is_available():
         sys.exit("CUDA required") 
@@ -139,13 +153,15 @@ def main():
     optimizer = torch.optim.SGD(model.parameters(), lr=LEARNING_RATE) 
     loss_fn = torch.nn.CrossEntropyLoss()
 
+
     # print_model_params(model)
 
     # AMP initialization
     scaler = torch.cuda.amp.GradScaler()
 
     # Start training
-    for epoch in range(10000):
+    start_time = start_timer()
+    for epoch in range(EPOCHS):
         max_loss = 0.0
         min_loss = sys.float_info.max
 
@@ -201,6 +217,9 @@ def main():
                 f'Range: {min_max_range:.5f}')
 
     writer.close()
+    time_taken, max_memory_allocated = end_timer(start_time)
+
+    print(f'Epochs {EPOCHS:,} Duration {time_taken:.3f} Max Tensor Memory {max_memory_allocated:,}')
 
     # Test on 1-100 ( or test_data_start )
     test_x_numpy = fizz_buzz.binary_encode_as_numpy_array(1, test_data_start)
